@@ -344,10 +344,16 @@ public class TcpServer {
                 Database.insertGroupMember(newChat.getId(), currentUser.getId());
                 Database.insertGroupMember(newChat.getId(), dto.targetUserId);
 
-                NetworkPacket broadcastPacket = new NetworkPacket(PacketType.CREATE_CHAT_BROADCAST, currentUser.getId(), newChat);
-                sendDirectPacket(broadcastPacket);
+                ChatDtos.NewChatBroadcastDto packetForAlice = new ChatDtos.NewChatBroadcastDto(newChat, null);
+                NetworkPacket pAlice = new NetworkPacket(PacketType.CREATE_CHAT_BROADCAST, currentUser.getId(), packetForAlice);
+                sendDirectPacket(pAlice);
 
-                sendToSpecificUser(dto.targetUserId, broadcastPacket);
+                ChatDtos.NewChatBroadcastDto packetForBob = new ChatDtos.NewChatBroadcastDto(newChat, dto.initialKeyCiphertext);
+                NetworkPacket pBob = new NetworkPacket(PacketType.CREATE_CHAT_BROADCAST, currentUser.getId(), packetForBob);
+
+                sendToSpecificUser(dto.targetUserId, pBob);
+
+                System.out.println("✅ [SERVER] Chat " + newChat.getId() + " creat. Ciphertext rutat catre User " + dto.targetUserId);
             }
         }
 
