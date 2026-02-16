@@ -36,6 +36,7 @@ public class Database {
 //        insertUser("user3","$argon2i$v=19$m=65536,t=3,p=2$mwSOyb59h5biXPtf0dNg0A$Cgl9wFVeURUNKbQhF8TDfUDK6W/e0iSac8hcIe0ii1U",
 //                "UBlPPo40x0okq7RNbmUjitrWwtnLG37YRZ0l4dByctpoWAZRliHsCKuUMAMI/vOOMLU=", System.currentTimeMillis());
         //createTableExtras();
+//        createTableOfflineQueue();
         selectUsers();
     }
 
@@ -723,5 +724,78 @@ public class Database {
             throw new RuntimeException(e);
         }
     }
+
+    public static void createTableOfflineQueue(){
+        try(var connection = DriverManager.getConnection(connString, user, password);
+        var stmt = connection.createStatement()){
+
+            String query = """
+                CREATE TABLE IF NOT EXISTS OFFLINE_QUEUE(
+                id SERIAL PRIMARY KEY,
+                id_user INTEGER NOT NULL,
+                packet_content TEXT NOT NULL,
+                created_at BIGINT,
+                FOREIGN KEY(id_user) REFERENCES USERS(id) ON DELETE CASCADE
+                );
+                """;
+
+            stmt.executeUpdate(query);
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void insertPendingPacket(int targetId, String jsonPacket) {
+        String query = "INSERT INTO OFFLINE_QUEUE (id_user, packet_content, created_at) VALUES (?, ?, ?)";
+        try (var connection = DriverManager.getConnection(connString, user, password);
+        var  ps = connection.prepareStatement(query)) {
+
+            ps.setInt(1, targetId);
+            ps.setString(2, jsonPacket);
+
+            ps.setLong(3, System.currentTimeMillis());
+            ps.executeUpdate();
+
+        } catch (SQLException e){
+            e.printStackTrace();
+        }
+    }
+
+    public static List<String> getAndClearPendingPackets(int userId) {
+        List<String> queue = new ArrayList<>();
+
+        String selectQuery = "SELECT packet_content FROM OFFLINE_QUEUE WHERE id_user = ? ORDER BY id ASC";
+        String deleteQuery = "DELETE FROM OFFLINE_QUEUE WHERE id_user = ?";
+
+        try (var connection = DriverManager.getConnection(connString, user, password)) {
+            connection.setAutoCommit(false);
+
+            try (var ps = connection.prepareStatement(selectQuery)) {
+                ps.setInt(1, userId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        queue.add(rs.getString("packet_content"));
+                    }
+                }
+            }
+
+            if (!queue.isEmpty()) {
+                try (var delStmt = connection.prepareStatement(deleteQuery)) {
+                    delStmt.setInt(1, userId);
+                    delStmt.executeUpdate();
+                }
+                connection.commit();
+                System.out.println("✅ [OFFLINE] Livrat " + queue.size() + " pachete catre User " + userId);
+            } else {
+                connection.rollback();
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return queue;
+    }
 }
+
 

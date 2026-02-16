@@ -184,6 +184,26 @@ public class TcpServer {
 
                 System.out.println("[LOGIN] User " + user.getId() + " conectat.");
 
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(200);
+                        List<String> missedPackets = Database.getAndClearPendingPackets(user.getId());
+
+                        if (!missedPackets.isEmpty()) {
+                            System.out.println("📬 Livrez " + missedPackets.size() + " pachete offline catre User " + user.getId());
+
+                            for (String json : missedPackets) {
+                                NetworkPacket p = NetworkPacket.fromJson(json);
+                                sendDirectPacket(p);
+
+                                Thread.sleep(20);
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+
             } else {
                 sendPacket(PacketType.LOGIN_RESPONSE, "FAIL");
             }
@@ -386,13 +406,27 @@ public class TcpServer {
         }
 
         private void sendToSpecificUser(int targetUserId, NetworkPacket p) {
+            boolean isOnline = false;
+
             synchronized (clients) {
                 for (ClientHandler client : clients) {
                     if (client.currentUser != null && client.currentUser.getId() == targetUserId) {
-                        try { client.sendDirectPacket(p); } catch (Exception e) {}
+                        try {
+                            client.sendDirectPacket(p);
+                            isOnline = true;
+                        } catch (IOException e) {
+                            isOnline = false;
+                        }
                         break;
                     }
                 }
+            }
+
+            if (!isOnline) {
+                System.out.println("⚠️ User " + targetUserId + " offline/inaccesibil. Salvez pachetul in coada...");
+                String packetJson = p.toJson();
+
+                Database.insertPendingPacket(targetUserId, packetJson);
             }
         }
 
